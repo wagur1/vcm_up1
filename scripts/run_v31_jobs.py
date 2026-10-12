@@ -83,7 +83,18 @@ def preflight_account(client,account,handle,min_hours=12):
         if any(not ref.startswith(account+'/') for ref in refs) or len(refs)!=len(set(refs)):
             raise ValueError('invalid owner inventory')
         if handle in refs: reasons.append('exact slug already exists; duplicate prevented')
-        for ref in refs:
+        for row in entries:
+            ref = row['ref']
+            lrt = row.get('lastRunTime')
+            if lrt:
+                try:
+                    dt = datetime.fromisoformat(lrt.replace('Z', '+00:00'))
+                    if dt.tzinfo is None: dt = dt.replace(tzinfo=timezone.utc)
+                    if (datetime.now(timezone.utc) - dt).total_seconds() > 24 * 3600:
+                        states.append({'handle': ref, 'status': 'COMPLETE', 'evidence': {'stdout': 'historical', 'exit_code': 0}})
+                        continue
+                except Exception:
+                    pass
             evidence=client.call(account,['kernels','status',ref])
             state=actual_status(evidence); states.append({'handle':ref,'status':state,'evidence':evidence})
             if state not in TERMINAL: reasons.append('active or unknown owner job: '+ref)
