@@ -36,8 +36,8 @@ def monitor_job(job_id: str, interval: int = 30, max_wait_minutes: int = 600) ->
         try:
             status_data = call_registry(["status", "--job", job_id])
             st = status_data.get("status")
-            stages = status_data.get("stages", {})
-            runtime = status_data.get("runtime", {})
+            stages = status_data.get("stages") or {}
+            runtime = status_data.get("runtime") or {}
 
             if st != last_status or stages:
                 print(f"[{time.strftime('%H:%M:%S')}] Status: {st} | Elapsed: {elapsed_m:.1f}m | GPU: {runtime.get('gpu', 'N/A')}")
