@@ -47,11 +47,12 @@ def build_spatiotemporal_tube_mask(clip_shape: tuple[int, int, int, int],
             if 0 <= b.frame_idx < t:
                 x1, y1, x2, y2 = b.box
                 bw, bh = x2 - x1, y2 - y1
-                rx1 = max(0, int(np.floor(x1 - bw * corridor_padding)))
-                ry1 = max(0, int(np.floor(y1 - bh * corridor_padding)))
-                rx2 = min(w, int(np.ceil(x2 + bw * corridor_padding)))
-                ry2 = min(h, int(np.ceil(y2 + bh * corridor_padding)))
-                mask[b.frame_idx, ry1:ry2, rx1:rx2] = 1.0
+                rx1 = max(0, min(w, int(np.floor(x1 - bw * corridor_padding))))
+                ry1 = max(0, min(h, int(np.floor(y1 - bh * corridor_padding))))
+                rx2 = max(0, min(w, int(np.ceil(x2 + bw * corridor_padding))))
+                ry2 = max(0, min(h, int(np.ceil(y2 + bh * corridor_padding))))
+                if rx2 > rx1 and ry2 > ry1:
+                    mask[b.frame_idx, ry1:ry2, rx1:rx2] = 1.0
 
         # Temporal interpolation between sparse keyframes
         if temporal_smoothing and len(boxes) >= 2:
@@ -68,11 +69,12 @@ def build_spatiotemporal_tube_mask(clip_shape: tuple[int, int, int, int],
                         ]
                         x1, y1, x2, y2 = interp_box
                         bw, bh = x2 - x1, y2 - y1
-                        rx1 = max(0, int(np.floor(x1 - bw * corridor_padding)))
-                        ry1 = max(0, int(np.floor(y1 - bh * corridor_padding)))
-                        rx2 = min(w, int(np.ceil(x2 + bw * corridor_padding)))
-                        ry2 = min(h, int(np.ceil(y2 + bh * corridor_padding)))
-                        mask[f, ry1:ry2, rx1:rx2] = 1.0
+                        rx1 = max(0, min(w, int(np.floor(x1 - bw * corridor_padding))))
+                        ry1 = max(0, min(h, int(np.floor(y1 - bh * corridor_padding))))
+                        rx2 = max(0, min(w, int(np.ceil(x2 + bw * corridor_padding))))
+                        ry2 = max(0, min(h, int(np.ceil(y2 + bh * corridor_padding))))
+                        if rx2 > rx1 and ry2 > ry1:
+                            mask[f, ry1:ry2, rx1:rx2] = 1.0
 
     return mask
 

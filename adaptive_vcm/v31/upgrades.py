@@ -1,19 +1,21 @@
 """Research-backed upgrades for Video Coding for Machines (VCM) preprocessing.
 
 Foundational literature:
-1. Yuan Tian et al., "Action-Aware Video Frame Decimation for Machine Vision"
-   (ICCV 2023 / SMC++ 2024):
+1. Yuan Tian, Guo Lu et al., "Non-Semantics Suppressed Mask Learning for Unsupervised
+   Video Semantic Compression" (ICCV 2023) / "SMC++: Masked Learning of Unsupervised
+   Video Semantic Compression" (arXiv:2406.04765):
    Dynamic temporal decimation using inter-frame motion residual energy instead
    of uniform frame skipping, retaining informative action transients.
-2. Samuel F. Menduiña et al., "Feature-Preserving Rate-Distortion Optimization"
-   (arXiv 2024 FPRDO / ICASSP):
+2. Samuel Fernández-Menduiña, Eduardo Pavez, Antonio Ortega,
+   "Feature-Preserving Rate-Distortion Optimization in Image Coding for Machines"
+   (arXiv:2408.07028 / IEEE MMSP / TMM 2024):
    Gradient and feature-sensitivity map replacing coarse uniform bounding box halos.
-3. Guo Lu et al., "Towards Task-Driven Video Preprocessing for Deep Learning Models"
-   (IEEE TCSVT 2024):
+3. Guo Lu et al., "Preprocessing Enhanced Image Compression for Machine Vision"
+   (IEEE Transactions on Circuits and Systems for Video Technology - TCSVT 2024):
    Quantization-adaptive frequency shaping balancing edge sharpening and noise smoothing
    across high-QP regimes (QP 35-45).
-4. Takahiro Shindo et al., "Structure-Aware Pre-Filtering for Machine Vision Video Compression"
-   (IEEE ICIP 2024 SA-ICM):
+4. Takahiro Shindo et al., "Image Coding for Machines with Edge Information Learning
+   Using Segment Anything" (IEEE ICIP 2024):
    Edge-preserving guided filtering protecting machine-salient structural contours while
    flattening transform-heavy background noise.
 """
@@ -72,6 +74,29 @@ def dynamic_temporal_decimation(rgb: np.ndarray, n_keep: int = 8) -> tuple[np.nd
     return decimated, selected_indices
 
 
+def restore_dynamic_temporal_samples(decoded: np.ndarray,
+                                    sample_indices: tuple[int, ...] | list[int],
+                                    target_frames: int = 16) -> np.ndarray:
+    """Restore non-uniformly decimated frames to target analyzer timeline via nearest-neighbor mapping.
+
+    Given sampled frames at indices t_k in [0, target_frames - 1], for each target frame index t in [0, target_frames - 1],
+    selects the closest sampled frame: k*(t) = argmin_k |t - t_k|.
+    This strictly preserves physical motion cadence and temporal velocity rather than uniform block repetition.
+    """
+    if not isinstance(decoded, np.ndarray) or decoded.ndim != 4:
+        raise ValueError("decoded must be a 4D array (K, H, W, C)")
+    if len(decoded) != len(sample_indices):
+        raise ValueError(f"decoded length ({len(decoded)}) does not match sample_indices ({len(sample_indices)})")
+    if not sample_indices:
+        raise ValueError("sample_indices must not be empty")
+
+    indices_arr = np.array(sample_indices, dtype=np.int32)
+    target_times = np.arange(target_frames, dtype=np.int32)
+    dists = np.abs(target_times[:, np.newaxis] - indices_arr[np.newaxis, :])
+    best_k = np.argmin(dists, axis=1)
+    return decoded[best_k].copy()
+
+
 def feature_sensitivity_mask(frame: np.ndarray, boxes: np.ndarray | None = None,
                             halo: float = 0.15, alpha: float = 0.45) -> np.ndarray:
     """Compute task-feature sensitivity map (Menduiña et al., FPRDO 2024).
@@ -95,7 +120,7 @@ def feature_sensitivity_mask(frame: np.ndarray, boxes: np.ndarray | None = None,
     max_val = float(np.max(grad_mag))
     grad_norm = grad_mag / (max_val + 1e-6) if max_val > 0 else np.zeros((h, w), dtype=np.float32)
 
-    # Box ROI mask
+    # Box ROI mask with strict non-negative clamping and bounds checking
     box_mask = np.zeros((h, w), dtype=np.float32)
     if boxes is not None and len(boxes) > 0:
         for box in boxes:
@@ -104,11 +129,12 @@ def feature_sensitivity_mask(frame: np.ndarray, boxes: np.ndarray | None = None,
             bh = y2 - y1
             pad_x = bw * halo
             pad_y = bh * halo
-            rx1 = max(0, int(np.floor(x1 - pad_x)))
-            ry1 = max(0, int(np.floor(y1 - pad_y)))
-            rx2 = min(w, int(np.ceil(x2 + pad_x)))
-            ry2 = min(h, int(np.ceil(y2 + pad_y)))
-            box_mask[ry1:ry2, rx1:rx2] = 1.0
+            rx1 = max(0, min(w, int(np.floor(x1 - pad_x))))
+            ry1 = max(0, min(h, int(np.floor(y1 - pad_y))))
+            rx2 = max(0, min(w, int(np.ceil(x2 + pad_x))))
+            ry2 = max(0, min(h, int(np.ceil(y2 + pad_y))))
+            if rx2 > rx1 and ry2 > ry1:
+                box_mask[ry1:ry2, rx1:rx2] = 1.0
 
     if boxes is not None and len(boxes) > 0:
         sensitivity = alpha * grad_norm + (1.0 - alpha) * box_mask
@@ -213,6 +239,8 @@ def execute_upgraded_action(source: dict, action: Action, qp: int, support: dict
     task = source.get("task")
     if task not in ("ar", "od"):
         raise ValueError(f"unsupported task: {task}")
+    if action.task != task:
+        raise ValueError(f"task mismatch: action.task='{action.task}' does not match source task='{task}'")
     if type(qp) is not int or qp not in QPS or source.get("codec") not in CODECS:
         raise ValueError("unsupported codec/QP condition")
 
@@ -248,6 +276,10 @@ def execute_upgraded_action(source: dict, action: Action, qp: int, support: dict
     elif action.kind == "sensitivity":
         # Feature-sensitivity weighted spatial protection
         boxes = None
+        if "boxes" in source and source["boxes"] is not None:
+            boxes = np.asarray(source["boxes"])
+        elif "ground_truth" in source and isinstance(source["ground_truth"], dict) and "boxes" in source["ground_truth"]:
+            boxes = np.asarray(source["ground_truth"]["boxes"])
         if "control_protection" in source and isinstance(source["control_protection"], np.ndarray):
             protection = np.asarray(source["control_protection"], dtype=np.float32)
         else:
