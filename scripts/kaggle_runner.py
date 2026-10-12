@@ -58,7 +58,7 @@ finish() {{
   exit "$result"
 }}
 trap finish EXIT
-git clone -q https://github.com/munnn01/adaptive_preprocessing.git "$REPO"
+git clone -q https://github.com/wagur1/vcm_up1.git "$REPO"
 git -C "$REPO" checkout -q {args.commit}
 test "$(git -C "$REPO" rev-parse HEAD)" = {args.commit}
 cd "$REPO"

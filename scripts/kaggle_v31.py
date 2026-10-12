@@ -43,7 +43,7 @@ def command(argv):
 def emit(tag,value):
     print(tag+' '+json.dumps(value,sort_keys=True,allow_nan=False),flush=True)
 def main():
-    command(['git','clone','-q','https://github.com/munnn01/adaptive_preprocessing.git',str(REPO)])
+    command(['git','clone','-q','https://github.com/wagur1/vcm_up1.git',str(REPO)])
     command(['git','-C',str(REPO),'checkout','-q',JOB['commit']])
     command([sys.executable,'-m','pip','install','-q','pycocotools'])
     sys.path.insert(0,str(REPO))
