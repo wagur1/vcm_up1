@@ -18,7 +18,7 @@ from adaptive_vcm.v31.protocol import canonical_hash,SOURCE_COUNTS,validate_part
 from adaptive_vcm.v31.measure_store import atomic_json,load_measurements,read_json,sha,condition_path,assert_complete,read_condition
 from adaptive_vcm.v31.oracle import validate_gate
 
-TERMINAL={'COMPLETE','ERROR','CANCEL_ACKNOWLEDGED','CANCELLED'}
+TERMINAL={'COMPLETE','ERROR','CANCEL_ACKNOWLEDGED','CANCELLED','NOT_FOUND'}
 
 
 def now(): return datetime.now(timezone.utc).isoformat()
@@ -58,6 +58,8 @@ def select_account(pool,probe):
 
 
 def actual_status(evidence):
+    if evidence.get('exit_code')!=0 and ('404' in evidence.get('stderr','') or 'Not Found' in evidence.get('stderr','')):
+        return 'NOT_FOUND'
     match=re.search(r'KernelWorkerStatus\.([A-Z_]+)',evidence['stdout'])
     return match.group(1) if evidence['exit_code']==0 and match else 'UNKNOWN'
 
@@ -77,7 +79,7 @@ def preflight_account(client,account,handle,min_hours=12):
         if hours<min_hours: reasons.append('insufficient verified GPU quota')
         if re.search('next page token',inventory['stdout']+inventory['stderr'],re.I):
             raise ValueError('incomplete owner inventory; pagination requires follow-up')
-        entries=json.loads(inventory['stdout']); refs=[row['ref'] for row in entries]
+        entries=[row for row in json.loads(inventory['stdout']) if row.get('ref')]; refs=[row['ref'] for row in entries]
         if any(not ref.startswith(account+'/') for ref in refs) or len(refs)!=len(set(refs)):
             raise ValueError('invalid owner inventory')
         if handle in refs: reasons.append('exact slug already exists; duplicate prevented')
