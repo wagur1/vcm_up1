@@ -117,3 +117,26 @@ Nghiên cứu kế thừa nền tảng kiểm chứng V31 và mở rộng giao t
 6. Sławomir Różek et al., *"Luma Background Restoration for Region-of-Interest-Based Video Coding for Machines"*, **MDPI Sensors / Electronics**, 2024.
 7. Yifu Zhang et al., *"ByteTrack: Multi-Object Tracking by Associating Every Detection Box"*, **ECCV**, 2022.
 8. Christoph Reich et al., *"A Perspective on Deep Vision Performance with Standard Image and Video Codecs"*, **IEEE/CVF CVPRW**, 2024.
+
+---
+
+## 4. Bằng chứng Thực nghiệm Mới nhất: Kết quả Full Benchmark AR trên Kaggle GPU (Tesla T4)
+
+Vào ngày 12–13/10/2026, job benchmark toàn diện `wagur124705/v31-ar-oracle-run3` (commit `9abbb9b`) đã chạy thành công 100% trên GPU Tesla T4 của Kaggle với dải 4-QP `[30, 35, 40, 45]` và 2 codec H.264 / H.265 thực tế qua 256 video clip Kinetics-400 (FIT: 96, CAL: 32, TUNE: 128, DEV: 128; 1,024 conditions trên TUNE).
+
+### Kết quả đo lường trên tập TUNE độc lập:
+
+| Arm | Codec | Cubic BD-rate | PCHIP BD-rate | Rate Delta % (QP 30 $\to$ 45) | Quality Gap pp (QP 30 $\to$ 45) | Oracle Gate Status | Lý do kích hoạt chặn |
+|---|---|:---:|:---:|:---:|:---:|:---:|---|
+| **Arm A** *(Controls + V29-A Profile)* | H.264 | -5.52% | -5.27% | [-18.70%, -12.07%, -7.41%, -3.46%] | [-1.56, -1.56, -0.78, -0.78] | **BLOCKED** | PCHIP < -15% chưa đạt; Quality drop > 1.0 pp |
+| | H.265 | -5.78% | **+1.06%** | [-15.40%, -9.14%, -4.43%, -0.99%] | [0.00, -2.34, -7.03, +1.56] | **BLOCKED** | PCHIP bị dương (+1.06%); Quality drop lớn ở QP 40 |
+| **Arm B** *(Thêm drop2 & temporal filter)* | H.264 | -11.28% | -8.75% | [-26.30%, -18.17%, -11.91%, -6.44%] | [-2.34, -4.69, +0.78, -2.34] | **BLOCKED** | PCHIP chưa đạt -15%; Quality drop vượt 1.0 pp |
+| | H.265 | -9.58% | **-4.42%** | [-22.09%, -12.51%, -6.88%, -1.98%] | [0.00, -1.56, -3.12, 0.00] | **BLOCKED** | PCHIP chỉ đạt -4.42% (chưa đạt -10%); Quality drop > 1.0 pp |
+| **Arm C** *(Toàn bộ Action Space)* | H.264 | **-13.24%** | **-13.36%** | [-26.25%, -18.73%, -15.41%, -10.69%] | [-3.12, -2.34, +0.78, -1.56] | **BLOCKED** | H.264 vượt -10%, nhưng Quality drop ở QP 30/35 > 1.0 pp |
+| | H.265 | -10.14% | **-6.12%** | [-21.94%, -15.02%, -9.09%, -5.16%] | [-3.12, -3.12, -1.56, +3.91] | **BLOCKED** | **H.265 PCHIP chỉ đạt -6.12%**; Quality drop > 1.0 pp |
+
+### Ý nghĩa khoa học:
+1. **Xác thực hoàn toàn phản biện:** Kết quả thực tế trên 256 video clip Kinetics xác nhận rõ ràng rằng: trên codec hiện đại **H.265**, pipeline tiền xử lý V31 chỉ đạt mức cải thiện PCHIP **-6.12%** (Arm C) và **-4.42%** (Arm B), hoàn toàn chưa đạt mục tiêu < -10% để công bố SOTA.
+2. **Cơ chế Oracle Gate hoạt động trung thực:** Hệ thống chốt chặn an toàn `ORACLE_BLOCKED` đã ngăn chặn chính xác việc công bố sai lệch khi cả tiêu chí PCHIP BD-rate lẫn độ lệch chất lượng (Delta Quality $\le$ -1.0 pp) bị vi phạm.
+3. **Động lực thúc đẩy V32:** Sự suy giảm nhịp thời gian trong `drop2` và thiếu điều phối thích ứng theo độ nhạy đặc trưng giải thích tại sao H.265 bị drop chất lượng. Các nâng cấp V32 (Temporal Cadence Restoration, Sensitivity Masking, Task Routing) chính là giải pháp kỹ thuật cần thiết để khắc phục các hạn chế này.
+
